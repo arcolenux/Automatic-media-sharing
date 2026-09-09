@@ -39,10 +39,10 @@ Instead of uploading photos to third-party cloud servers or dealing with compres
 
 ```mermaid
 graph LR
-    A[📷 Camera Capture] --> B[⏱️ 5s Opt-Out Notification]
-    B -->|Cancel| C[🔒 Kept Local Only]
-    B -->|Approved / 5s Elapsed| D[📡 Nearby Connections Mesh]
-    D --> E[👥 Connected Peers Synced]
+    A["📷 Camera Capture"] --> B["⏱️ 5s Opt-Out Notification"]
+    B -->|"Cancel"| C["🔒 Kept Local Only"]
+    B -->|"Approved / 5s Elapsed"| D["📡 Nearby Connections Mesh"]
+    D --> E["👥 Connected Peers Synced"]
 ```
 
 1. **Host or Join** — One device creates a session (generating a QR code and a 6-character room code); nearby devices scan or type the code to connect.
