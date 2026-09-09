@@ -1,0 +1,357 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "8b6fd24ff929ec05c9e72ce9ac7ad226",
+    "entities": [
+      {
+        "tableName": "sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `sessionName` TEXT, `roomCode` TEXT, `hostDeviceId` TEXT, `createdAt` INTEGER NOT NULL, `endedAt` INTEGER NOT NULL, `isActive` INTEGER NOT NULL, `memberCount` INTEGER NOT NULL, `isHost` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionName",
+            "columnName": "sessionName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "roomCode",
+            "columnName": "roomCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "hostDeviceId",
+            "columnName": "hostDeviceId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "endedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "isActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memberCount",
+            "columnName": "memberCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isHost",
+            "columnName": "isHost",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "session_members",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `displayName` TEXT, `endpointId` TEXT, `isNearby` INTEGER NOT NULL, `joinedAt` INTEGER NOT NULL, `lastSeenAt` INTEGER NOT NULL, `hasLeft` INTEGER NOT NULL, PRIMARY KEY(`sessionId`, `deviceId`))",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endpointId",
+            "columnName": "endpointId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isNearby",
+            "columnName": "isNearby",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "joinedAt",
+            "columnName": "joinedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "lastSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasLeft",
+            "columnName": "hasLeft",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId",
+            "deviceId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_session_members_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_session_members_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_session_members_deviceId",
+            "unique": false,
+            "columnNames": [
+              "deviceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_session_members_deviceId` ON `${TABLE_NAME}` (`deviceId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "shared_photos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`photoId` TEXT NOT NULL, `sessionId` TEXT, `ownerDeviceId` TEXT, `ownerName` TEXT, `localFilePath` TEXT, `capturedAt` INTEGER NOT NULL, `syncedAt` INTEGER NOT NULL, `syncStatus` TEXT, `retryCount` INTEGER NOT NULL, `optedOut` INTEGER NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `fileSize` INTEGER NOT NULL, PRIMARY KEY(`photoId`))",
+        "fields": [
+          {
+            "fieldPath": "photoId",
+            "columnName": "photoId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "ownerDeviceId",
+            "columnName": "ownerDeviceId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "ownerName",
+            "columnName": "ownerName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "localFilePath",
+            "columnName": "localFilePath",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncedAt",
+            "columnName": "syncedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncStatus",
+            "columnName": "syncStatus",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "optedOut",
+            "columnName": "optedOut",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileSize",
+            "columnName": "fileSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "photoId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_shared_photos_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shared_photos_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_shared_photos_syncStatus",
+            "unique": false,
+            "columnNames": [
+              "syncStatus"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shared_photos_syncStatus` ON `${TABLE_NAME}` (`syncStatus`)"
+          },
+          {
+            "name": "index_shared_photos_capturedAt",
+            "unique": false,
+            "columnNames": [
+              "capturedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_shared_photos_capturedAt` ON `${TABLE_NAME}` (`capturedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "photo_receipts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`photoId` TEXT NOT NULL, `peerDeviceId` TEXT NOT NULL, `peerName` TEXT, `deliveredAt` INTEGER NOT NULL, `status` TEXT, PRIMARY KEY(`photoId`, `peerDeviceId`))",
+        "fields": [
+          {
+            "fieldPath": "photoId",
+            "columnName": "photoId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peerDeviceId",
+            "columnName": "peerDeviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peerName",
+            "columnName": "peerName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "deliveredAt",
+            "columnName": "deliveredAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "photoId",
+            "peerDeviceId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_photo_receipts_photoId",
+            "unique": false,
+            "columnNames": [
+              "photoId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photo_receipts_photoId` ON `${TABLE_NAME}` (`photoId`)"
+          },
+          {
+            "name": "index_photo_receipts_peerDeviceId",
+            "unique": false,
+            "columnNames": [
+              "peerDeviceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photo_receipts_peerDeviceId` ON `${TABLE_NAME}` (`peerDeviceId`)"
+          },
+          {
+            "name": "index_photo_receipts_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photo_receipts_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8b6fd24ff929ec05c9e72ce9ac7ad226')"
+    ]
+  }
+}
