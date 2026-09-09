@@ -1,15 +1,31 @@
-# Gradle
+# Gradle & Build artifacts
 .gradle/
 build/
 app/build/
 *.iml
 .idea/
+.vscode/
 local.properties
 .DS_Store
 captures/
 .externalNativeBuild/
 .cxx/
 
-# Generated files
+# Generated binaries
 *.apk
 *.aab
+*.ap_
+
+# Keystores & Credentials
+*.jks
+*.keystore
+*.key
+google-services.json
+
+# Internal Specifications & Build Prompts
+Antigravity Master Build Prompt — PENGUIN V1.md
+design.md
+instructions.md
+project.md
+*.prompt.md
+*.internal.md
