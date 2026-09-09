@@ -22,10 +22,6 @@ captures/
 *.key
 google-services.json
 
-# Internal Specifications & Build Prompts
-Antigravity Master Build Prompt — PENGUIN V1.md
-design.md
-instructions.md
-project.md
-*.prompt.md
-*.internal.md
+# Markdown documents (only README.md is published)
+*.md
+!README.md
