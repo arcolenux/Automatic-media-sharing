@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background tokens -->
+    <color name="bg_dark">#181A1D</color>
+    <color name="bg_dark_soft">#1C1F23</color>
+    <color name="surface">#202328</color>
+    <color name="surface_elevated">#25292E</color>
+    <color name="surface_soft">#292D32</color>
+
+    <!-- Brand Accent tokens -->
+    <color name="primary_accent">#72CFC2</color>
+    <color name="primary_accent_soft">#9ADFD6</color>
+    <color name="primary_accent_deep">#55B8AB</color>
+
+    <!-- Typography tokens -->
+    <color name="text_primary">#F1F2F0</color>
+    <color name="text_secondary">#C3C7C8</color>
+    <color name="text_tertiary">#92979A</color>
+    <color name="text_hint">#70767A</color>
+
+    <!-- Separation & Outline tokens -->
+    <color name="divider">#30353A</color>
+    <color name="outline">#3A4045</color>
+    <color name="outline_focused">#72CFC2</color>
+
+    <!-- Synchronization Status tokens -->
+    <color name="status_syncing">#D8B66A</color>
+    <color name="status_synced">#75BF88</color>
+    <color name="status_failed">#D97878</color>
+    <color name="status_queued">#858D93</color>
+    <color name="status_cancelled">#70767A</color>
+
+    <!-- Glassmorphism & Overlay tokens -->
+    <color name="glass_surface">#D1202328</color>
+    <color name="glass_surface_dialog">#E0202328</color>
+    <color name="glass_border">#993A4045</color>
+    <color name="badge_bg">#BF181A1D</color>
+
+    <!-- Transparent & Common -->
+    <color name="transparent">#00000000</color>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+</resources>

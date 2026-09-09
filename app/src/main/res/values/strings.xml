@@ -1,0 +1,78 @@
+<resources>
+    <string name="app_name">PENGUIN</string>
+    <string name="tagline">Share moments, not files</string>
+    <string name="home_description">Create a temporary sharing session for your group. New camera photos can be shared automatically with nearby participants.</string>
+
+    <!-- Actions -->
+    <string name="create_session">Create Session</string>
+    <string name="join_session">Join Session</string>
+    <string name="start_session">Start Session</string>
+    <string name="generate_session">Generate Session</string>
+    <string name="scan_qr_code">Scan QR Code</string>
+    <string name="join">Join</string>
+    <string name="or">OR</string>
+    <string name="cancel">Cancel</string>
+    <string name="stay">Stay</string>
+    <string name="leave">Leave</string>
+    <string name="end_session">End Session</string>
+    <string name="retry">Retry</string>
+    <string name="cancel_sync">Cancel Sync</string>
+
+    <!-- Session Creation & Joining -->
+    <string name="create_session_desc">Start a temporary, direct peer-to-peer photo sharing session for nearby friends.</string>
+    <string name="session_name_label">Session name</string>
+    <string name="session_name_hint">e.g. Beach Trip 2026</string>
+    <string name="room_code_label">Room Code</string>
+    <string name="room_code_hint">6-character code</string>
+    <string name="scan_to_join">Scan to Join</string>
+    <string name="share_code_desc">Share this code with your group</string>
+    <string name="join_session_desc">Join an active host nearby using their QR code or 6-character room code.</string>
+    <string name="qr_scan_desc">Point your camera at the host\'s screen to join automatically.</string>
+
+    <!-- Active Session -->
+    <string name="auto_share_title">Auto-Share</string>
+    <string name="auto_share_desc_off">Turn on Auto-Share to share photos automatically.</string>
+    <string name="auto_share_desc_on">New camera photos will be shared after a 5-second cancel window.</string>
+    <string name="shared_photos_title">Shared Photos</string>
+    <string name="members_count_format">%1$d %2$s</string>
+    <string name="member_singular">member</string>
+    <string name="members_plural">members</string>
+    <string name="members_nearby_format">%1$d of %2$d members nearby</string>
+    <string name="photos_count_format">%1$d shared</string>
+    <string name="empty_gallery_title">No shared photos yet</string>
+    <string name="empty_gallery_desc">Turn on Auto-Share and capture a photo to share it with the group.</string>
+
+    <!-- Sync States -->
+    <string name="status_syncing_text">Sharing photo…</string>
+    <string name="status_synced_text">Shared</string>
+    <string name="status_failed_text">Couldn\'t share</string>
+    <string name="status_queued_text">Waiting for a nearby device</string>
+    <string name="waiting_for_nearby_title">Waiting for nearby participants</string>
+    <string name="waiting_for_nearby_desc">Your approved photos stay on this device and will be shared when session members are reachable again.</string>
+    <string name="syncing_missed_photos">Syncing missed photos…</string>
+    <string name="all_caught_up">You\'re all caught up</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_detection">PENGUIN Photo Monitoring</string>
+    <string name="notification_channel_detection_desc">Active while Auto-Share is enabled to detect newly taken camera photos</string>
+    <string name="notification_channel_opt_out">Photo Sharing Alerts</string>
+    <string name="notification_channel_opt_out_desc">5-second privacy countdown before sharing photos</string>
+    <string name="service_notification_title">Auto-Share is active</string>
+    <string name="service_notification_text">Watching for new camera photos to share with %1$s</string>
+    <string name="opt_out_title">Photo ready to share</string>
+    <string name="opt_out_text">This photo will be shared with your PENGUIN session.</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_end_session_title">End session?</string>
+    <string name="dialog_end_session_msg">New photos will no longer be shared with this session. This will end the session for everyone.</string>
+    <string name="dialog_leave_session_title">Leave session?</string>
+    <string name="dialog_leave_session_msg">You will stop receiving photos from this session.</string>
+
+    <!-- Errors -->
+    <string name="err_invalid_room_code">Please enter a valid 6-character room code.</string>
+    <string name="err_session_name_empty">Please enter a session name.</string>
+    <string name="err_session_not_found">We couldn\'t find this session nearby. Make sure the host has started it and is close by.</string>
+    <string name="err_session_ended">This session has already ended.</string>
+    <string name="err_connection_failed">Connection failed. Check permissions and try again.</string>
+    <string name="err_missing_permissions">Required permissions are missing to connect with nearby devices.</string>
+</resources>
