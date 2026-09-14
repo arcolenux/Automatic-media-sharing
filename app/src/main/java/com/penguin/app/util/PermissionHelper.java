@@ -86,13 +86,11 @@ public final class PermissionHelper {
             permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
             permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES);
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Android 12 & 12L (API 31-32)
             permissions.add(Manifest.permission.BLUETOOTH_SCAN);
             permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
         } else {
             // Android 8.0 - 11 (API 26-30)
             permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);

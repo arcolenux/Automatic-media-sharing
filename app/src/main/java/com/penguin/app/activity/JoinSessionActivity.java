@@ -190,24 +190,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             return;
         }
 
-        checkLocationAndJoin(roomCode);
-    }
-
-    private void checkLocationAndJoin(String roomCode) {
-        if (!PermissionHelper.isLocationEnabled(this)) {
-            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                    .setTitle("Turn on Location")
-                    .setMessage("Android requires Location to be ON in Quick Settings for offline Wi-Fi & Bluetooth discovery.\n\n(PENGUIN never tracks or shares your location).")
-                    .setPositiveButton("Open Settings", (d, w) -> {
-                        startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
-                    })
-                    .setNegativeButton("Continue", (d, w) -> {
-                        joinWithRoomCode(roomCode);
-                    })
-                    .show();
-        } else {
-            joinWithRoomCode(roomCode);
-        }
+        joinWithRoomCode(roomCode);
     }
 
     private void launchQRScanner() {

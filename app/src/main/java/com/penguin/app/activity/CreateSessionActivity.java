@@ -93,20 +93,7 @@ public class CreateSessionActivity extends AppCompatActivity {
             return;
         }
 
-        if (!PermissionHelper.isLocationEnabled(this)) {
-            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                    .setTitle("Turn on Location")
-                    .setMessage("Android requires Location to be ON in Quick Settings for nearby devices to discover and join your session offline.\n\n(PENGUIN never tracks or shares your location).")
-                    .setPositiveButton("Open Settings", (d, w) -> {
-                        startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
-                    })
-                    .setNegativeButton("Start Anyway", (d, w) -> {
-                        startSession();
-                    })
-                    .show();
-        } else {
-            startSession();
-        }
+        startSession();
     }
 
     private void generateSessionData() {

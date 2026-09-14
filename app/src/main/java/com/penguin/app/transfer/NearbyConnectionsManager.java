@@ -32,6 +32,7 @@ import com.penguin.app.model.SharedPhoto;
 import com.penguin.app.model.SyncStatus;
 import com.penguin.app.model.TransferPayload;
 import com.penguin.app.util.FileUtils;
+import com.penguin.app.util.RoomCodeGenerator;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -318,10 +319,10 @@ public class NearbyConnectionsManager {
             String endpointName = info.getEndpointName();
             Log.d(TAG, "Endpoint found: " + endpointId + ", name: " + endpointName);
 
-            String[] parts = endpointName.split("\\|");
-            if (parts.length >= 2) {
+            String[] parts = endpointName != null ? endpointName.split("\\|") : new String[0];
+            if (parts.length >= 1) {
                 String roomCode = parts[0];
-                if (currentRoomCode != null && currentRoomCode.equalsIgnoreCase(roomCode)) {
+                if (currentRoomCode != null && RoomCodeGenerator.normalize(currentRoomCode).equalsIgnoreCase(RoomCodeGenerator.normalize(roomCode))) {
                     String devId = parts.length >= 2 ? parts[1] : ("PEER-" + endpointId);
                     String devName = parts.length >= 3 ? parts[2] : "Nearby Peer";
                     if (parts.length >= 4 && parts[3] != null && !parts[3].isEmpty()) {
@@ -340,7 +341,7 @@ public class NearbyConnectionsManager {
 
                     String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
                     String myName = PenguinApplication.getInstance().getUserName();
-                    String myEndpointName = roomCode + "|" + myDeviceId + "|" + myName + "|" + (currentSessionId != null ? currentSessionId : "") + "|" + (currentSessionName != null ? currentSessionName : "");
+                    String myEndpointName = RoomCodeGenerator.normalize(roomCode) + "|" + myDeviceId + "|" + myName + "|" + (currentSessionId != null ? currentSessionId : "") + "|" + (currentSessionName != null ? currentSessionName : "");
 
                     connectionsClient.requestConnection(myEndpointName, endpointId, connectionLifecycleCallback)
                             .addOnSuccessListener(unused -> Log.d(TAG, "Connection requested to " + endpointId))
