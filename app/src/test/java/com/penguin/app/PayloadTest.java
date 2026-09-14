@@ -50,20 +50,39 @@ public class PayloadTest {
     }
 
     @Test
-    public void testInventoryPayload_serialization() {
-        List<String> photoIds = Arrays.asList("id-1", "id-2", "id-3");
-        InventoryPayload inventory = new InventoryPayload("session-1", "device-1", photoIds);
+    public void testTransferPayload_memberRosterSerialization() {
+        String rosterJson = "[{\"deviceId\":\"dev1\",\"displayName\":\"Host\",\"endpointId\":\"ep1\",\"isNearby\":true}]";
+        TransferPayload roster = TransferPayload.forMemberRoster("session-123", "Trip 2026", rosterJson);
 
-        String json = inventory.toJson();
+        String json = roster.toJson();
         assertNotNull(json);
 
-        InventoryPayload parsed = InventoryPayload.fromJson(json);
+        TransferPayload parsed = TransferPayload.fromJson(json);
         assertNotNull(parsed);
-        assertEquals("session-1", parsed.getSessionId());
-        assertEquals("device-1", parsed.getDeviceId());
-        assertEquals(3, parsed.getKnownPhotoIds().size());
-        assertTrue(parsed.getKnownPhotoIds().contains("id-1"));
-        assertTrue(parsed.getKnownPhotoIds().contains("id-2"));
-        assertTrue(parsed.getKnownPhotoIds().contains("id-3"));
+        assertEquals(TransferPayload.TYPE_MEMBER_ROSTER, parsed.getType());
+        assertEquals("session-123", parsed.getSessionId());
+        assertEquals("Trip 2026", parsed.getSessionName());
+        assertEquals(rosterJson, parsed.getExtraData());
+    }
+
+    @Test
+    public void testTransferPayload_memberJoinSerialization() {
+        TransferPayload join = new TransferPayload();
+        join.setType(TransferPayload.TYPE_MEMBER_JOIN);
+        join.setSessionId("session-xyz");
+        join.setSessionName("Beach Party");
+        join.setOwnerDeviceId("dev-peer");
+        join.setOwnerName("Bob");
+
+        String json = join.toJson();
+        assertNotNull(json);
+
+        TransferPayload parsed = TransferPayload.fromJson(json);
+        assertNotNull(parsed);
+        assertEquals(TransferPayload.TYPE_MEMBER_JOIN, parsed.getType());
+        assertEquals("session-xyz", parsed.getSessionId());
+        assertEquals("Beach Party", parsed.getSessionName());
+        assertEquals("dev-peer", parsed.getOwnerDeviceId());
+        assertEquals("Bob", parsed.getOwnerName());
     }
 }

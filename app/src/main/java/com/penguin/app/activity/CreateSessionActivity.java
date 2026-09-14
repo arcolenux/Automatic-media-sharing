@@ -9,6 +9,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.penguin.app.PenguinApplication;
@@ -18,6 +20,7 @@ import com.penguin.app.db.AppDatabase;
 import com.penguin.app.model.Session;
 import com.penguin.app.model.SessionMember;
 import com.penguin.app.transfer.TransferManager;
+import com.penguin.app.util.PermissionHelper;
 import com.penguin.app.util.QRCodeUtil;
 import com.penguin.app.util.RoomCodeGenerator;
 
@@ -33,6 +36,22 @@ public class CreateSessionActivity extends AppCompatActivity {
     private String sessionId;
     private String sessionName;
 
+    private final ActivityResultLauncher<String[]> nearbyPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                boolean allGranted = true;
+                for (Boolean granted : result.values()) {
+                    if (granted == null || !granted) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                if (allGranted) {
+                    startSession();
+                } else {
+                    Toast.makeText(this, R.string.err_missing_permissions, Toast.LENGTH_SHORT).show();
+                }
+            });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,6 +63,11 @@ public class CreateSessionActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
         binding.toolbar.setNavigationOnClickListener(v -> finish());
+
+        String savedName = PenguinApplication.getInstance().getUserName();
+        if (savedName != null) {
+            binding.etHostName.setText(savedName);
+        }
 
         setupListeners();
     }
@@ -60,10 +84,42 @@ public class CreateSessionActivity extends AppCompatActivity {
             }
         });
 
-        binding.btnStartSession.setOnClickListener(v -> startSession());
+        binding.btnStartSession.setOnClickListener(v -> checkPermissionsAndStartSession());
+    }
+
+    private void checkPermissionsAndStartSession() {
+        if (!PermissionHelper.hasNearbyPermissions(this)) {
+            nearbyPermissionLauncher.launch(PermissionHelper.getRequiredNearbyPermissions());
+            return;
+        }
+
+        if (!PermissionHelper.isLocationEnabled(this)) {
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                    .setTitle("Turn on Location")
+                    .setMessage("Android requires Location to be ON in Quick Settings for nearby devices to discover and join your session offline.\n\n(PENGUIN never tracks or shares your location).")
+                    .setPositiveButton("Open Settings", (d, w) -> {
+                        startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                    })
+                    .setNegativeButton("Start Anyway", (d, w) -> {
+                        startSession();
+                    })
+                    .show();
+        } else {
+            startSession();
+        }
     }
 
     private void generateSessionData() {
+        String hostNameInput = binding.etHostName.getText() != null
+                ? binding.etHostName.getText().toString().trim()
+                : "";
+        if (hostNameInput.isEmpty()) {
+            binding.layoutHostName.setError(getString(R.string.err_name_empty));
+            return;
+        }
+        binding.layoutHostName.setError(null);
+        PenguinApplication.getInstance().setUserName(hostNameInput);
+
         String nameInput = binding.etSessionName.getText() != null
                 ? binding.etSessionName.getText().toString().trim()
                 : "";
@@ -136,6 +192,7 @@ public class CreateSessionActivity extends AppCompatActivity {
 
                 Intent intent = new Intent(CreateSessionActivity.this, SessionActivity.class);
                 intent.putExtra(SessionActivity.EXTRA_SESSION_ID, sessionId);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 startActivity(intent);
                 finish();
             });

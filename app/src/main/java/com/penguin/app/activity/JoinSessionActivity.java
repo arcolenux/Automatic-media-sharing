@@ -24,6 +24,7 @@ import com.penguin.app.model.SyncStatus;
 import com.penguin.app.transfer.NearbyConnectionsManager;
 import com.penguin.app.transfer.TransferManager;
 import com.penguin.app.util.PermissionHelper;
+import com.penguin.app.util.PortraitCaptureActivity;
 import com.penguin.app.util.QRCodeUtil;
 import com.penguin.app.util.RoomCodeGenerator;
 
@@ -37,7 +38,42 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
 
     private ActivityJoinSessionBinding binding;
     private String targetRoomCode;
+    private String pendingRoomCode;
     private boolean isConnecting = false;
+
+    private final android.os.Handler searchTimeoutHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable searchingAdviceRunnable = () -> {
+        if (isConnecting && binding != null) {
+            binding.tvConnectingStatus.setText("Still searching for session " + (targetRoomCode != null ? targetRoomCode : "") + "…\nMake sure Bluetooth & Wi-Fi are ON and devices are close by.");
+        }
+    };
+    private final Runnable searchTimeoutRunnable = () -> {
+        if (isConnecting) {
+            onDiscoveryFailed("Search timed out");
+        }
+    };
+
+    // Nearby / Location Permission Launcher
+    private final ActivityResultLauncher<String[]> nearbyPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                boolean allGranted = true;
+                for (Boolean granted : result.values()) {
+                    if (granted == null || !granted) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                if (allGranted) {
+                    if (pendingRoomCode != null && !pendingRoomCode.isEmpty()) {
+                        String code = pendingRoomCode;
+                        pendingRoomCode = null;
+                        joinWithRoomCode(code);
+                    }
+                } else {
+                    Toast.makeText(this, R.string.err_missing_permissions, Toast.LENGTH_SHORT).show();
+                    pendingRoomCode = null;
+                }
+            });
 
     // ZXing QR Code Scanner Launcher
     private final ActivityResultLauncher<ScanOptions> qrScanLauncher =
@@ -46,7 +82,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
                     String extractedCode = QRCodeUtil.extractRoomCode(result.getContents());
                     if (extractedCode != null) {
                         binding.etRoomCode.setText(extractedCode);
-                        joinWithRoomCode(extractedCode);
+                        validateNameAndJoin(extractedCode);
                     } else {
                         Toast.makeText(this, R.string.err_invalid_room_code, Toast.LENGTH_SHORT).show();
                     }
@@ -75,6 +111,11 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
         }
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
+        String savedName = PenguinApplication.getInstance().getUserName();
+        if (savedName != null) {
+            binding.etJoinerName.setText(savedName);
+        }
+
         NearbyConnectionsManager.getInstance(this).addListener(this);
 
         setupListeners();
@@ -93,13 +134,23 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             String code = QRCodeUtil.extractRoomCode(data.toString());
             if (code != null) {
                 binding.etRoomCode.setText(code);
-                joinWithRoomCode(code);
+                validateNameAndJoin(code);
             }
         }
     }
 
     private void setupListeners() {
         binding.btnScanQR.setOnClickListener(v -> {
+            String joinerName = binding.etJoinerName.getText() != null
+                    ? binding.etJoinerName.getText().toString().trim()
+                    : "";
+            if (joinerName.isEmpty()) {
+                binding.layoutJoinerName.setError(getString(R.string.err_name_empty));
+                return;
+            }
+            binding.layoutJoinerName.setError(null);
+            PenguinApplication.getInstance().setUserName(joinerName);
+
             if (PermissionHelper.hasCameraPermission(this)) {
                 launchQRScanner();
             } else {
@@ -118,15 +169,53 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             }
             binding.layoutRoomCode.setError(null);
 
-            joinWithRoomCode(RoomCodeGenerator.normalize(codeInput));
+            validateNameAndJoin(RoomCodeGenerator.normalize(codeInput));
         });
+    }
+
+    private void validateNameAndJoin(String roomCode) {
+        String joinerName = binding.etJoinerName.getText() != null
+                ? binding.etJoinerName.getText().toString().trim()
+                : "";
+        if (joinerName.isEmpty()) {
+            binding.layoutJoinerName.setError(getString(R.string.err_name_empty));
+            return;
+        }
+        binding.layoutJoinerName.setError(null);
+        PenguinApplication.getInstance().setUserName(joinerName);
+
+        if (!PermissionHelper.hasNearbyPermissions(this)) {
+            pendingRoomCode = roomCode;
+            nearbyPermissionLauncher.launch(PermissionHelper.getRequiredNearbyPermissions());
+            return;
+        }
+
+        checkLocationAndJoin(roomCode);
+    }
+
+    private void checkLocationAndJoin(String roomCode) {
+        if (!PermissionHelper.isLocationEnabled(this)) {
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                    .setTitle("Turn on Location")
+                    .setMessage("Android requires Location to be ON in Quick Settings for offline Wi-Fi & Bluetooth discovery.\n\n(PENGUIN never tracks or shares your location).")
+                    .setPositiveButton("Open Settings", (d, w) -> {
+                        startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                    })
+                    .setNegativeButton("Continue", (d, w) -> {
+                        joinWithRoomCode(roomCode);
+                    })
+                    .show();
+        } else {
+            joinWithRoomCode(roomCode);
+        }
     }
 
     private void launchQRScanner() {
         ScanOptions options = new ScanOptions();
-        options.setPrompt("Align QR code inside viewfinder");
+        options.setPrompt("Scan Penguin QR code (works from any angle)");
         options.setBeepEnabled(false);
         options.setOrientationLocked(true);
+        options.setCaptureActivity(PortraitCaptureActivity.class);
         options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
         qrScanLauncher.launch(options);
     }
@@ -135,12 +224,23 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
         this.targetRoomCode = roomCode;
         isConnecting = true;
 
+        cancelSearchTimers();
+
         binding.layoutConnecting.setVisibility(View.VISIBLE);
         binding.tvConnectingStatus.setText("Searching for nearby host with code " + roomCode + "…");
         binding.btnJoinManual.setEnabled(false);
         binding.btnScanQR.setEnabled(false);
 
+        // Schedule progressive advice after 8s and timeout after 25s
+        searchTimeoutHandler.postDelayed(searchingAdviceRunnable, 8000);
+        searchTimeoutHandler.postDelayed(searchTimeoutRunnable, 25000);
+
         TransferManager.getInstance(this).startJoiningSession(roomCode);
+    }
+
+    private void cancelSearchTimers() {
+        searchTimeoutHandler.removeCallbacks(searchingAdviceRunnable);
+        searchTimeoutHandler.removeCallbacks(searchTimeoutRunnable);
     }
 
     // ==========================================
@@ -157,15 +257,31 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
     @Override
     public void onPeerConnected(NearbyConnectionsManager.PeerInfo peer) {
         if (!isConnecting || targetRoomCode == null) return;
+        isConnecting = false;
+        cancelSearchTimers();
 
         runOnUiThread(() -> {
             String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
             String myName = PenguinApplication.getInstance().getUserName();
-            String generatedSessionId = UUID.randomUUID().toString();
+            
+            String canonicalSessionId = (peer.sessionId != null && !peer.sessionId.isEmpty())
+                    ? peer.sessionId
+                    : (NearbyConnectionsManager.getInstance(this).getCurrentSessionId() != null && !NearbyConnectionsManager.getInstance(this).getCurrentSessionId().isEmpty()
+                            ? NearbyConnectionsManager.getInstance(this).getCurrentSessionId()
+                            : UUID.randomUUID().toString());
+
+            String canonicalSessionName = (peer.sessionName != null && !peer.sessionName.isEmpty())
+                    ? peer.sessionName
+                    : (NearbyConnectionsManager.getInstance(this).getCurrentSessionName() != null && !NearbyConnectionsManager.getInstance(this).getCurrentSessionName().isEmpty()
+                            ? NearbyConnectionsManager.getInstance(this).getCurrentSessionName()
+                            : "Session " + targetRoomCode);
+
+            NearbyConnectionsManager.getInstance(this).setCurrentSessionId(canonicalSessionId);
+            NearbyConnectionsManager.getInstance(this).setCurrentSessionName(canonicalSessionName);
 
             Session session = new Session(
-                    generatedSessionId,
-                    "Session " + targetRoomCode,
+                    canonicalSessionId,
+                    canonicalSessionName,
                     targetRoomCode,
                     peer.deviceId,
                     System.currentTimeMillis(),
@@ -176,7 +292,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             );
 
             SessionMember myMember = new SessionMember(
-                    generatedSessionId,
+                    canonicalSessionId,
                     myDeviceId,
                     myName,
                     "ME",
@@ -187,7 +303,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             );
 
             SessionMember hostMember = new SessionMember(
-                    generatedSessionId,
+                    canonicalSessionId,
                     peer.deviceId,
                     peer.displayName,
                     peer.endpointId,
@@ -200,15 +316,18 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
             AppDatabase.databaseWriteExecutor.execute(() -> {
                 PenguinApplication.getInstance().getDatabase().sessionDao().deactivateAllSessions(System.currentTimeMillis());
                 PenguinApplication.getInstance().getDatabase().sessionDao().insertSession(session);
+                PenguinApplication.getInstance().getDatabase().sessionDao().deletePlaceholderMembers(canonicalSessionId);
                 PenguinApplication.getInstance().getDatabase().sessionDao().insertOrUpdateMember(myMember);
-                PenguinApplication.getInstance().getDatabase().sessionDao().insertOrUpdateMember(hostMember);
+                if (peer.deviceId != null && !peer.deviceId.startsWith("PEER-") && !peer.deviceId.equals(myDeviceId)) {
+                    PenguinApplication.getInstance().getDatabase().sessionDao().insertOrUpdateMember(hostMember);
+                }
 
                 runOnUiThread(() -> {
                     NearbyConnectionsManager.getInstance(this).stopDiscovery();
                     TransferManager.getInstance(this).setActiveSession(session);
 
                     Intent intent = new Intent(JoinSessionActivity.this, SessionActivity.class);
-                    intent.putExtra(SessionActivity.EXTRA_SESSION_ID, generatedSessionId);
+                    intent.putExtra(SessionActivity.EXTRA_SESSION_ID, canonicalSessionId);
                     startActivity(intent);
                     finish();
                 });
@@ -218,6 +337,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
 
     @Override
     public void onDiscoveryFailed(String reason) {
+        cancelSearchTimers();
         runOnUiThread(() -> {
             isConnecting = false;
             binding.layoutConnecting.setVisibility(View.GONE);
@@ -244,6 +364,7 @@ public class JoinSessionActivity extends AppCompatActivity implements NearbyConn
 
     @Override
     protected void onDestroy() {
+        cancelSearchTimers();
         NearbyConnectionsManager.getInstance(this).removeListener(this);
         super.onDestroy();
     }

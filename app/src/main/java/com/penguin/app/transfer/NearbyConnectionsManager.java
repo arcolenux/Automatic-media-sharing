@@ -33,6 +33,9 @@ import com.penguin.app.model.SyncStatus;
 import com.penguin.app.model.TransferPayload;
 import com.penguin.app.util.FileUtils;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages Google Nearby Connections (P2P_CLUSTER Strategy) for PENGUIN.
- * Handles advertising, discovery, connection lifecycle, and payload transmission.
+ * Handles advertising, discovery, connection lifecycle, roster sync, and payload transmission.
  */
 public class NearbyConnectionsManager {
 
@@ -62,30 +65,48 @@ public class NearbyConnectionsManager {
     private boolean isAdvertising = false;
     private boolean isDiscovering = false;
     private String currentSessionId;
+    private String currentSessionName;
     private String currentRoomCode;
+    private String discoveredHostSessionId;
+    private String discoveredHostSessionName;
 
     // Active Connected Endpoints: endpointId -> PeerInfo
     public static class PeerInfo {
         public final String endpointId;
         public final String deviceId;
         public final String displayName;
+        public final String sessionId;
+        public final String sessionName;
 
-        public PeerInfo(String endpointId, String deviceId, String displayName) {
+        public PeerInfo(String endpointId, String deviceId, String displayName, String sessionId, String sessionName) {
             this.endpointId = endpointId;
             this.deviceId = deviceId;
             this.displayName = displayName;
+            this.sessionId = sessionId;
+            this.sessionName = sessionName;
+        }
+
+        public PeerInfo(String endpointId, String deviceId, String displayName, String sessionId) {
+            this(endpointId, deviceId, displayName, sessionId, null);
         }
     }
 
     private final Map<String, PeerInfo> connectedPeers = new ConcurrentHashMap<>();
+    private final Map<String, PeerInfo> pendingPeers = new ConcurrentHashMap<>();
 
     // Map incoming Nearby Payload ID -> Received TransferPayload Metadata
     private final Map<Long, TransferPayload> incomingMetadataMap = new ConcurrentHashMap<>();
-    // Map incoming Nearby Payload ID -> Received File Uri
-    private final Map<Long, Uri> incomingFilePayloadMap = new ConcurrentHashMap<>();
+    // In-flight incoming files: payloadId -> Payload.File
+    private final Map<Long, Payload.File> transferringIncomingFilesMap = new ConcurrentHashMap<>();
+    // Completed incoming files awaiting metadata: payloadId -> Payload.File
+    private final Map<Long, Payload.File> completedIncomingFilesMap = new ConcurrentHashMap<>();
 
     // Map outgoing Nearby Payload ID -> SharedPhoto being transferred
     private final Map<Long, SharedPhoto> outgoingPhotosMap = new ConcurrentHashMap<>();
+
+    // Set of processed and relayed photo IDs to prevent duplicate writes and infinite relay loops
+    private final java.util.Set<String> processedPhotoIds = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final java.util.Set<String> relayedPhotoIds = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     // Listeners
     public interface NearbyEventListener {
@@ -131,12 +152,64 @@ public class NearbyConnectionsManager {
         return !connectedPeers.isEmpty();
     }
 
+    public boolean isAdvertising() {
+        return isAdvertising;
+    }
+
+    public boolean isDiscovering() {
+        return isDiscovering;
+    }
+
     public int getConnectedPeerCount() {
         return connectedPeers.size();
     }
 
     public Map<String, PeerInfo> getConnectedPeers() {
         return new HashMap<>(connectedPeers);
+    }
+
+    public boolean isDeviceConnected(String deviceId) {
+        if (deviceId == null) return false;
+        for (PeerInfo p : connectedPeers.values()) {
+            if (deviceId.equals(p.deviceId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public java.util.Set<String> getConnectedDeviceIds() {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        for (PeerInfo p : connectedPeers.values()) {
+            if (p.deviceId != null) {
+                set.add(p.deviceId);
+            }
+        }
+        return set;
+    }
+
+    public String getCurrentSessionId() {
+        return currentSessionId;
+    }
+
+    public void setCurrentSessionId(String sessionId) {
+        this.currentSessionId = sessionId;
+    }
+
+    public String getCurrentSessionName() {
+        return currentSessionName;
+    }
+
+    public void setCurrentSessionName(String sessionName) {
+        this.currentSessionName = sessionName;
+    }
+
+    public String getDiscoveredHostSessionId() {
+        return discoveredHostSessionId;
+    }
+
+    public String getDiscoveredHostSessionName() {
+        return discoveredHostSessionName;
     }
 
     // ==========================================
@@ -146,12 +219,13 @@ public class NearbyConnectionsManager {
     public void startAdvertising(Session session) {
         if (session == null) return;
         this.currentSessionId = session.getSessionId();
+        this.currentSessionName = session.getSessionName();
         this.currentRoomCode = session.getRoomCode();
 
         String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
         String myName = PenguinApplication.getInstance().getUserName();
-        // Endpoint Name format: ROOM_CODE|DEVICE_ID|NAME|SESSION_ID
-        String endpointName = session.getRoomCode() + "|" + myDeviceId + "|" + myName + "|" + session.getSessionId();
+        // Endpoint Name format: ROOM_CODE|DEVICE_ID|NAME|SESSION_ID|SESSION_NAME
+        String endpointName = session.getRoomCode() + "|" + myDeviceId + "|" + myName + "|" + session.getSessionId() + "|" + session.getSessionName();
 
         AdvertisingOptions advertisingOptions = new AdvertisingOptions.Builder()
                 .setStrategy(STRATEGY)
@@ -166,6 +240,14 @@ public class NearbyConnectionsManager {
             isAdvertising = true;
             Log.d(TAG, "Started advertising successfully: " + endpointName);
         }).addOnFailureListener(e -> {
+            if (e instanceof com.google.android.gms.common.api.ApiException) {
+                int code = ((com.google.android.gms.common.api.ApiException) e).getStatusCode();
+                if (code == ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING) {
+                    isAdvertising = true;
+                    Log.d(TAG, "Already advertising, keeping state active: " + endpointName);
+                    return;
+                }
+            }
             isAdvertising = false;
             Log.e(TAG, "Failed to start advertising", e);
         });
@@ -186,6 +268,12 @@ public class NearbyConnectionsManager {
     public void startDiscovery(String targetRoomCode) {
         this.currentRoomCode = targetRoomCode;
 
+        if (isDiscovering) {
+            try {
+                connectionsClient.stopDiscovery();
+            } catch (Exception ignored) {}
+        }
+
         DiscoveryOptions discoveryOptions = new DiscoveryOptions.Builder()
                 .setStrategy(STRATEGY)
                 .build();
@@ -198,6 +286,14 @@ public class NearbyConnectionsManager {
             isDiscovering = true;
             Log.d(TAG, "Started discovery for roomCode: " + targetRoomCode);
         }).addOnFailureListener(e -> {
+            if (e instanceof com.google.android.gms.common.api.ApiException) {
+                int code = ((com.google.android.gms.common.api.ApiException) e).getStatusCode();
+                if (code == ConnectionsStatusCodes.STATUS_ALREADY_DISCOVERING) {
+                    isDiscovering = true;
+                    Log.d(TAG, "Already discovering for roomCode: " + targetRoomCode);
+                    return;
+                }
+            }
             isDiscovering = false;
             Log.e(TAG, "Failed to start discovery", e);
             notifyDiscoveryFailed("Discovery failed: " + e.getMessage());
@@ -226,12 +322,25 @@ public class NearbyConnectionsManager {
             if (parts.length >= 2) {
                 String roomCode = parts[0];
                 if (currentRoomCode != null && currentRoomCode.equalsIgnoreCase(roomCode)) {
-                    Log.d(TAG, "Matching host found for roomCode " + roomCode + ", requesting connection to " + endpointId);
+                    String devId = parts.length >= 2 ? parts[1] : ("PEER-" + endpointId);
+                    String devName = parts.length >= 3 ? parts[2] : "Nearby Peer";
+                    if (parts.length >= 4 && parts[3] != null && !parts[3].isEmpty()) {
+                        discoveredHostSessionId = parts[3];
+                        currentSessionId = parts[3];
+                    }
+                    if (parts.length >= 5 && parts[4] != null && !parts[4].isEmpty()) {
+                        discoveredHostSessionName = parts[4];
+                        currentSessionName = parts[4];
+                    }
+
+                    pendingPeers.put(endpointId, new PeerInfo(endpointId, devId, devName, currentSessionId, currentSessionName));
+
+                    Log.d(TAG, "Matching host found for roomCode " + roomCode + ", deviceId=" + devId + ", sessionId=" + currentSessionId + ", sessionName=" + currentSessionName + ", requesting connection to " + endpointId);
                     notifyHostDiscovered(endpointId, roomCode);
 
                     String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
                     String myName = PenguinApplication.getInstance().getUserName();
-                    String myEndpointName = roomCode + "|" + myDeviceId + "|" + myName;
+                    String myEndpointName = roomCode + "|" + myDeviceId + "|" + myName + "|" + (currentSessionId != null ? currentSessionId : "") + "|" + (currentSessionName != null ? currentSessionName : "");
 
                     connectionsClient.requestConnection(myEndpointName, endpointId, connectionLifecycleCallback)
                             .addOnSuccessListener(unused -> Log.d(TAG, "Connection requested to " + endpointId))
@@ -243,6 +352,7 @@ public class NearbyConnectionsManager {
         @Override
         public void onEndpointLost(@NonNull String endpointId) {
             Log.d(TAG, "Endpoint lost: " + endpointId);
+            pendingPeers.remove(endpointId);
         }
     };
 
@@ -250,6 +360,22 @@ public class NearbyConnectionsManager {
         @Override
         public void onConnectionInitiated(@NonNull String endpointId, @NonNull ConnectionInfo connectionInfo) {
             Log.d(TAG, "Connection initiated with " + endpointId + " (" + connectionInfo.getEndpointName() + ")");
+            String endpointName = connectionInfo.getEndpointName();
+            if (endpointName != null) {
+                String[] parts = endpointName.split("\\|");
+                String devId = parts.length >= 2 ? parts[1] : ("PEER-" + endpointId);
+                String devName = parts.length >= 3 ? parts[2] : "Nearby Peer";
+                String sessId = parts.length >= 4 ? parts[3] : currentSessionId;
+                String sessName = parts.length >= 5 ? parts[4] : currentSessionName;
+                if (sessId != null && !sessId.isEmpty() && (currentSessionId == null || currentSessionId.isEmpty())) {
+                    currentSessionId = sessId;
+                }
+                if (sessName != null && !sessName.isEmpty() && (currentSessionName == null || currentSessionName.isEmpty())) {
+                    currentSessionName = sessName;
+                }
+                pendingPeers.put(endpointId, new PeerInfo(endpointId, devId, devName, currentSessionId, currentSessionName));
+            }
+
             // Auto-accept connection in PENGUIN
             connectionsClient.acceptConnection(endpointId, payloadCallback)
                     .addOnSuccessListener(unused -> Log.d(TAG, "Accepted connection with " + endpointId))
@@ -261,20 +387,23 @@ public class NearbyConnectionsManager {
             if (resolution.getStatus().getStatusCode() == ConnectionsStatusCodes.STATUS_OK) {
                 Log.d(TAG, "Connected successfully to " + endpointId);
 
-                // Note: endpointName will be exchanged via Handshake/Member Join or decoded from discover/advertise
-                // Let's create a placeholder PeerInfo until Handshake bytes arrive
-                PeerInfo peer = new PeerInfo(endpointId, "PEER-" + endpointId, "Nearby Peer");
+                PeerInfo peer = pendingPeers.remove(endpointId);
+                if (peer == null) {
+                    peer = new PeerInfo(endpointId, "PEER-" + endpointId, "Nearby Peer", currentSessionId, currentSessionName);
+                }
                 connectedPeers.put(endpointId, peer);
 
-                // Send member join / handshake payload with our identity
+                // Send member join / handshake payload with our identity and session ID
                 sendMemberJoinPayload(endpointId);
+
+                // If we are host or already have members, broadcast our roster
+                broadcastCurrentMemberRoster();
 
                 // Trigger inventory exchange reconciliation
                 sendInventorySync(endpointId);
-
-                notifyPeerConnected(peer);
             } else {
                 Log.w(TAG, "Connection rejected or failed to " + endpointId + ": " + resolution.getStatus());
+                pendingPeers.remove(endpointId);
             }
         }
 
@@ -289,6 +418,9 @@ public class NearbyConnectionsManager {
                         PenguinApplication.getInstance().getDatabase()
                                 .sessionDao()
                                 .setMemberNearbyStatus(currentSessionId, peer.deviceId, false, null, System.currentTimeMillis());
+
+                        // Broadcast updated roster to all remaining peers
+                        broadcastCurrentMemberRoster();
                     });
                 }
                 notifyPeerDisconnected(endpointId, peer);
@@ -315,7 +447,7 @@ public class NearbyConnectionsManager {
                 Log.d(TAG, "Receiving incoming file payload ID: " + payloadId + " from " + endpointId);
                 Payload.File file = payload.asFile();
                 if (file != null) {
-                    incomingFilePayloadMap.put(payloadId, file.asUri());
+                    transferringIncomingFilesMap.put(payloadId, file);
                 }
             }
         }
@@ -328,12 +460,16 @@ public class NearbyConnectionsManager {
                 Log.d(TAG, "Payload transfer SUCCESS for ID: " + payloadId);
 
                 // Check if this was an incoming file
-                if (incomingFilePayloadMap.containsKey(payloadId)) {
-                    Uri fileUri = incomingFilePayloadMap.remove(payloadId);
-                    TransferPayload metadata = incomingMetadataMap.remove(payloadId);
+                if (transferringIncomingFilesMap.containsKey(payloadId)) {
+                    Payload.File filePayload = transferringIncomingFilesMap.remove(payloadId);
 
-                    if (metadata != null && fileUri != null) {
-                        processIncomingPhotoFile(fileUri, metadata);
+                    if (incomingMetadataMap.containsKey(payloadId)) {
+                        // Metadata already arrived -> process file immediately
+                        TransferPayload metadata = incomingMetadataMap.remove(payloadId);
+                        processIncomingPhotoFile(filePayload, metadata);
+                    } else {
+                        // Metadata hasn't arrived yet -> save in completed map
+                        completedIncomingFilesMap.put(payloadId, filePayload);
                     }
                 }
 
@@ -348,7 +484,8 @@ public class NearbyConnectionsManager {
 
             } else if (update.getStatus() == PayloadTransferUpdate.Status.FAILURE) {
                 Log.w(TAG, "Payload transfer FAILED for ID: " + payloadId + " to/from " + endpointId);
-                incomingFilePayloadMap.remove(payloadId);
+                transferringIncomingFilesMap.remove(payloadId);
+                completedIncomingFilesMap.remove(payloadId);
                 incomingMetadataMap.remove(payloadId);
 
                 SharedPhoto outgoingPhoto = outgoingPhotosMap.remove(payloadId);
@@ -368,13 +505,16 @@ public class NearbyConnectionsManager {
 
             switch (metadata.getType()) {
                 case TransferPayload.TYPE_PHOTO_METADATA:
-                    Log.d(TAG, "Received photo metadata for photoId: " + metadata.getPhotoId() + ", nearbyPayloadId: " + metadata.getNearbyPayloadId());
-                    incomingMetadataMap.put(metadata.getNearbyPayloadId(), metadata);
-                    // Check if file payload already arrived before metadata
-                    if (incomingFilePayloadMap.containsKey(metadata.getNearbyPayloadId())) {
-                        Uri fileUri = incomingFilePayloadMap.remove(metadata.getNearbyPayloadId());
-                        incomingMetadataMap.remove(metadata.getNearbyPayloadId());
-                        processIncomingPhotoFile(fileUri, metadata);
+                    long nearbyPayloadId = metadata.getNearbyPayloadId();
+                    Log.d(TAG, "Received photo metadata for photoId: " + metadata.getPhotoId() + ", nearbyPayloadId: " + nearbyPayloadId);
+
+                    if (completedIncomingFilesMap.containsKey(nearbyPayloadId)) {
+                        // File transfer already completed -> process now!
+                        Payload.File filePayload = completedIncomingFilesMap.remove(nearbyPayloadId);
+                        processIncomingPhotoFile(filePayload, metadata);
+                    } else {
+                        // File still in transit -> store metadata to be consumed on SUCCESS
+                        incomingMetadataMap.put(nearbyPayloadId, metadata);
                     }
                     break;
 
@@ -394,6 +534,10 @@ public class NearbyConnectionsManager {
                     handleMemberJoin(endpointId, metadata);
                     break;
 
+                case TransferPayload.TYPE_MEMBER_ROSTER:
+                    handleMemberRoster(metadata);
+                    break;
+
                 case TransferPayload.TYPE_MEMBER_LEAVE:
                     handleMemberLeave(metadata.getOwnerDeviceId());
                     break;
@@ -411,12 +555,19 @@ public class NearbyConnectionsManager {
         String deviceId = metadata.getOwnerDeviceId();
         String displayName = metadata.getOwnerName();
         String sessionId = metadata.getSessionId();
+        String sessionName = metadata.getSessionName();
 
-        if (sessionId != null) {
+        if (sessionId != null && !sessionId.isEmpty()) {
             this.currentSessionId = sessionId;
         }
+        if (sessionName != null && !sessionName.isEmpty()) {
+            this.currentSessionName = sessionName;
+            AppDatabase.databaseWriteExecutor.execute(() -> {
+                PenguinApplication.getInstance().getDatabase().sessionDao().updateSessionName(sessionId, sessionName);
+            });
+        }
 
-        PeerInfo peer = new PeerInfo(endpointId, deviceId, displayName);
+        PeerInfo peer = new PeerInfo(endpointId, deviceId, displayName, currentSessionId, currentSessionName);
         connectedPeers.put(endpointId, peer);
 
         AppDatabase.databaseWriteExecutor.execute(() -> {
@@ -435,9 +586,125 @@ public class NearbyConnectionsManager {
             // Update session active member count
             int count = PenguinApplication.getInstance().getDatabase().sessionDao().getActiveMembersCount(currentSessionId);
             PenguinApplication.getInstance().getDatabase().sessionDao().updateMemberCount(currentSessionId, count);
+
+            // Broadcast updated roster to all peers
+            broadcastCurrentMemberRoster();
         });
 
         notifyPeerConnected(peer);
+    }
+
+    private void handleMemberRoster(TransferPayload metadata) {
+        String sessionId = metadata.getSessionId();
+        String sessionName = metadata.getSessionName();
+        String rosterJson = metadata.getExtraData();
+
+        if (sessionId != null && !sessionId.isEmpty()) {
+            this.currentSessionId = sessionId;
+        }
+        if (sessionName != null && !sessionName.isEmpty()) {
+            this.currentSessionName = sessionName;
+        }
+
+        if (rosterJson == null || rosterJson.isEmpty() || currentSessionId == null) {
+            return;
+        }
+
+        AppDatabase.databaseWriteExecutor.execute(() -> {
+            try {
+                if (sessionName != null && !sessionName.isEmpty()) {
+                    PenguinApplication.getInstance().getDatabase().sessionDao().updateSessionName(currentSessionId, sessionName);
+                }
+                PenguinApplication.getInstance().getDatabase().sessionDao().deletePlaceholderMembers(currentSessionId);
+                JSONArray array = new JSONArray(rosterJson);
+                String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
+
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject obj = array.getJSONObject(i);
+                    String deviceId = obj.optString("deviceId");
+                    String displayName = obj.optString("displayName");
+                    String endpointId = obj.optString("endpointId");
+                    boolean isNearbyInRoster = obj.optBoolean("isNearby", true);
+                    boolean hasLeftInRoster = obj.optBoolean("hasLeft", false);
+
+                    if (deviceId != null && !deviceId.isEmpty() && !deviceId.startsWith("PEER-")) {
+                        boolean isMe = deviceId.equals(myDeviceId);
+                        boolean isNearbyToMe = isMe || isDeviceConnected(deviceId) || (isConnectedToAnyPeer() && isNearbyInRoster);
+
+                        SessionMember existing = PenguinApplication.getInstance().getDatabase().sessionDao()
+                                .getMember(currentSessionId, deviceId);
+
+                        long joinedAt = existing != null ? existing.getJoinedAt() : System.currentTimeMillis();
+                        boolean hasLeft = (existing != null && existing.isHasLeft()) || hasLeftInRoster;
+
+                        SessionMember member = new SessionMember(
+                                currentSessionId,
+                                deviceId,
+                                displayName,
+                                endpointId,
+                                isNearbyToMe,
+                                joinedAt,
+                                System.currentTimeMillis(),
+                                hasLeft
+                        );
+                        PenguinApplication.getInstance().getDatabase().sessionDao().insertOrUpdateMember(member);
+                    }
+                }
+
+                int count = PenguinApplication.getInstance().getDatabase().sessionDao().getActiveMembersCount(currentSessionId);
+                PenguinApplication.getInstance().getDatabase().sessionDao().updateMemberCount(currentSessionId, count);
+                Log.d(TAG, "Successfully synced roster with " + count + " active members for session " + currentSessionId);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed parsing roster json", e);
+            }
+        });
+    }
+
+    public void broadcastCurrentMemberRoster() {
+        if (currentSessionId == null) return;
+        AppDatabase.databaseWriteExecutor.execute(() -> {
+            if (currentSessionName == null || currentSessionName.isEmpty()) {
+                Session s = PenguinApplication.getInstance().getDatabase().sessionDao().getSessionById(currentSessionId);
+                if (s != null) {
+                    currentSessionName = s.getSessionName();
+                }
+            }
+            PenguinApplication.getInstance().getDatabase().sessionDao().deletePlaceholderMembers(currentSessionId);
+            List<SessionMember> members = PenguinApplication.getInstance().getDatabase()
+                    .sessionDao().getMembersForSession(currentSessionId);
+            if (members == null || members.isEmpty()) return;
+
+            try {
+                String myDeviceId = PenguinApplication.getInstance().getAppDeviceId();
+                java.util.Set<String> connectedDevIds = getConnectedDeviceIds();
+
+                JSONArray array = new JSONArray();
+                for (SessionMember m : members) {
+                    if (m.getDeviceId() != null && m.getDeviceId().startsWith("PEER-")) continue;
+                    boolean isNearby = m.getDeviceId().equals(myDeviceId) || connectedDevIds.contains(m.getDeviceId());
+                    JSONObject obj = new JSONObject();
+                    obj.put("deviceId", m.getDeviceId());
+                    obj.put("displayName", m.getDisplayName());
+                    obj.put("endpointId", m.getEndpointId());
+                    obj.put("isNearby", isNearby);
+                    obj.put("hasLeft", m.isHasLeft());
+                    array.put(obj);
+                }
+
+                TransferPayload rosterPayload = TransferPayload.forMemberRoster(
+                        currentSessionId,
+                        currentSessionName,
+                        array.toString()
+                );
+                byte[] bytes = rosterPayload.toJson().getBytes(StandardCharsets.UTF_8);
+
+                for (String endpointId : connectedPeers.keySet()) {
+                    sendBytes(endpointId, bytes);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error building roster broadcast", e);
+            }
+        });
     }
 
     private void handleMemberLeave(String deviceId) {
@@ -449,6 +716,8 @@ public class NearbyConnectionsManager {
 
                 int count = PenguinApplication.getInstance().getDatabase().sessionDao().getActiveMembersCount(currentSessionId);
                 PenguinApplication.getInstance().getDatabase().sessionDao().updateMemberCount(currentSessionId, count);
+
+                broadcastCurrentMemberRoster();
             });
         }
         notifyMemberLeft(deviceId);
@@ -463,15 +732,23 @@ public class NearbyConnectionsManager {
             });
         }
         stopAllEndpoints();
+        com.penguin.app.service.MediaDetectionService.stop(context);
         notifySessionEndedByHost();
     }
 
     private void handleInventorySync(String endpointId, InventoryPayload inventory) {
+        String targetSessionId = inventory.getSessionId();
+        if (targetSessionId == null || targetSessionId.isEmpty()) {
+            targetSessionId = currentSessionId;
+        }
+        if (targetSessionId == null) return;
+
+        final String activeSessionId = targetSessionId;
         Log.d(TAG, "Received inventory sync from " + inventory.getDeviceId() + " with " + inventory.getKnownPhotoIds().size() + " photos");
 
         AppDatabase.databaseWriteExecutor.execute(() -> {
             List<String> myKnownPhotoIds = PenguinApplication.getInstance().getDatabase()
-                    .photoDao().getKnownPhotoIdsForSession(inventory.getSessionId());
+                    .photoDao().getKnownPhotoIdsForSession(activeSessionId);
 
             // 1. Identify photos I have that peer is missing -> Send them!
             for (String myPhotoId : myKnownPhotoIds) {
@@ -487,7 +764,7 @@ public class NearbyConnectionsManager {
                     Log.d(TAG, "I am missing photo " + peerPhotoId + ", requesting from peer " + endpointId);
                     TransferPayload req = TransferPayload.forPhotoRequest(
                             peerPhotoId,
-                            inventory.getSessionId(),
+                            activeSessionId,
                             PenguinApplication.getInstance().getAppDeviceId()
                     );
                     sendBytes(endpointId, req.toJson().getBytes(StandardCharsets.UTF_8));
@@ -496,18 +773,60 @@ public class NearbyConnectionsManager {
         });
     }
 
-    private void processIncomingPhotoFile(Uri incomingUri, TransferPayload metadata) {
+    private void processIncomingPhotoFile(Payload.File filePayload, TransferPayload metadata) {
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
-                String targetFileName = metadata.getPhotoId() + ".jpg";
-                String savedFilePath = FileUtils.copyReceivedPayloadFile(context, incomingUri, targetFileName);
+                String photoId = metadata.getPhotoId();
+                if (photoId == null || photoId.isEmpty()) {
+                    return;
+                }
+
+                // Deduplication Check 1: In-memory tracker
+                if (processedPhotoIds.contains(photoId)) {
+                    Log.d(TAG, "Photo " + photoId + " already processed in memory. Skipping duplicate write/relay.");
+                    return;
+                }
+
+                // Deduplication Check 2: Database existence
+                SharedPhoto existing = PenguinApplication.getInstance().getDatabase().photoDao().getPhotoById(photoId);
+                if (existing != null && FileUtils.isValidImageFile(existing.getLocalFilePath())) {
+                    processedPhotoIds.add(photoId);
+                    Log.d(TAG, "Photo " + photoId + " already exists in database. Skipping duplicate write/relay.");
+                    return;
+                }
+
+                processedPhotoIds.add(photoId);
+
+                String targetFileName = photoId + ".jpg";
+                String sessionName = metadata.getSessionName();
+                if (sessionName == null || sessionName.isEmpty()) {
+                    sessionName = currentSessionName;
+                }
+                if ((sessionName == null || sessionName.isEmpty()) && currentSessionId != null) {
+                    Session s = PenguinApplication.getInstance().getDatabase().sessionDao().getSessionById(currentSessionId);
+                    if (s != null) {
+                        sessionName = s.getSessionName();
+                    }
+                }
+
+                String savedFilePath = FileUtils.copyReceivedPayloadFile(context, filePayload, targetFileName, sessionName);
+
+                if (!FileUtils.isValidImageFile(savedFilePath)) {
+                    Log.e(TAG, "Saved photo file is invalid or empty: " + savedFilePath);
+                    return;
+                }
 
                 int[] dims = FileUtils.getImageDimensions(savedFilePath);
                 long fileSize = new File(savedFilePath).length();
 
+                String effectiveSessionId = metadata.getSessionId();
+                if (effectiveSessionId == null || effectiveSessionId.isEmpty()) {
+                    effectiveSessionId = currentSessionId != null ? currentSessionId : "";
+                }
+
                 SharedPhoto photo = new SharedPhoto(
-                        metadata.getPhotoId(),
-                        metadata.getSessionId(),
+                        photoId,
+                        effectiveSessionId,
                         metadata.getOwnerDeviceId(),
                         metadata.getOwnerName(),
                         savedFilePath,
@@ -526,10 +845,37 @@ public class NearbyConnectionsManager {
 
                 notifyPhotoReceived(photo);
 
+                // Relay photo to other connected peers in the session (mesh relay)
+                relayPhotoToOtherPeers(photo, metadata.getOwnerDeviceId());
+
             } catch (Exception e) {
                 Log.e(TAG, "Failed saving received photo file for photoId: " + metadata.getPhotoId(), e);
             }
         });
+    }
+
+    private void relayPhotoToOtherPeers(SharedPhoto photo, String originalSenderDeviceId) {
+        if (photo == null || photo.getPhotoId() == null) return;
+
+        // Ensure each photo is relayed at most ONCE by this peer to prevent infinite ping-pong loops
+        if (!relayedPhotoIds.add(photo.getPhotoId())) {
+            Log.d(TAG, "Photo " + photo.getPhotoId() + " already relayed to peers. Skipping duplicate relay.");
+            return;
+        }
+
+        File file = new File(photo.getLocalFilePath());
+        for (Map.Entry<String, PeerInfo> entry : connectedPeers.entrySet()) {
+            String endpointId = entry.getKey();
+            PeerInfo peer = entry.getValue();
+
+            // Do not relay back to the original photo owner
+            if (peer.deviceId != null && peer.deviceId.equalsIgnoreCase(originalSenderDeviceId)) {
+                continue;
+            }
+
+            Log.d(TAG, "Relaying photo " + photo.getPhotoId() + " to peer " + peer.displayName + " (" + endpointId + ")");
+            sendPhotoToEndpoint(endpointId, file, photo);
+        }
     }
 
     // ==========================================
@@ -564,8 +910,14 @@ public class NearbyConnectionsManager {
 
             outgoingPhotosMap.put(payloadId, photo);
 
-            // 1. Send Metadata Bytes Payload with payloadId reference
-            TransferPayload metadata = TransferPayload.forPhotoMetadata(photo, payloadId);
+            // 1. Send Metadata Bytes Payload with payloadId reference and session name
+            TransferPayload metadata = TransferPayload.forPhotoMetadata(photo, payloadId, currentSessionName);
+            if (metadata.getSessionId() == null || metadata.getSessionId().isEmpty()) {
+                metadata.setSessionId(currentSessionId);
+            }
+            if (metadata.getSessionName() == null || metadata.getSessionName().isEmpty()) {
+                metadata.setSessionName(currentSessionName);
+            }
             byte[] metadataBytes = metadata.toJson().getBytes(StandardCharsets.UTF_8);
             Payload bytesPayload = Payload.fromBytes(metadataBytes);
 
@@ -601,6 +953,7 @@ public class NearbyConnectionsManager {
         TransferPayload joinPayload = new TransferPayload();
         joinPayload.setType(TransferPayload.TYPE_MEMBER_JOIN);
         joinPayload.setSessionId(currentSessionId != null ? currentSessionId : "");
+        joinPayload.setSessionName(currentSessionName != null ? currentSessionName : "");
         joinPayload.setOwnerDeviceId(PenguinApplication.getInstance().getAppDeviceId());
         joinPayload.setOwnerName(PenguinApplication.getInstance().getUserName());
 
@@ -657,10 +1010,16 @@ public class NearbyConnectionsManager {
         connectionsClient.stopAllEndpoints();
         connectedPeers.clear();
         incomingMetadataMap.clear();
-        incomingFilePayloadMap.clear();
+        transferringIncomingFilesMap.clear();
+        completedIncomingFilesMap.clear();
         outgoingPhotosMap.clear();
+        processedPhotoIds.clear();
+        relayedPhotoIds.clear();
         currentSessionId = null;
+        currentSessionName = null;
         currentRoomCode = null;
+        discoveredHostSessionId = null;
+        discoveredHostSessionName = null;
         Log.d(TAG, "Stopped all Nearby endpoints and cleaned up state");
     }
 

@@ -49,6 +49,9 @@ public interface SessionDao {
     @Query("UPDATE sessions SET memberCount = :count WHERE sessionId = :sessionId")
     void updateMemberCount(String sessionId, int count);
 
+    @Query("UPDATE sessions SET sessionName = :sessionName WHERE sessionId = :sessionId")
+    void updateSessionName(String sessionId, String sessionName);
+
     // --- Session Members ---
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -74,4 +77,16 @@ public interface SessionDao {
 
     @Query("UPDATE session_members SET hasLeft = 1, isNearby = 0, lastSeenAt = :leftAt WHERE sessionId = :sessionId AND deviceId = :deviceId")
     void markMemberLeft(String sessionId, String deviceId, long leftAt);
+
+    @Query("DELETE FROM session_members WHERE sessionId = :sessionId AND deviceId LIKE 'PEER-%'")
+    void deletePlaceholderMembers(String sessionId);
+
+    @Query("DELETE FROM session_members WHERE sessionId = :sessionId AND deviceId = :deviceId")
+    void deleteMember(String sessionId, String deviceId);
+
+    @Query("UPDATE session_members SET displayName = :displayName WHERE sessionId = :sessionId AND deviceId = :deviceId")
+    void updateMemberDisplayName(String sessionId, String deviceId, String displayName);
+
+    @Query("SELECT * FROM session_members WHERE sessionId = :sessionId AND deviceId = :deviceId LIMIT 1")
+    SessionMember getMember(String sessionId, String deviceId);
 }

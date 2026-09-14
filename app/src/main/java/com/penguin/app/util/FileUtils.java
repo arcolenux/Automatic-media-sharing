@@ -27,14 +27,72 @@ public final class FileUtils {
 
     /**
      * Copies a payload file received from Nearby Connections to the permanent shared photo directory.
+     * Safely checks for Uri, java.io.File, and ParcelFileDescriptor from Google Nearby Connections Payload.File.
      *
      * @param context Application context
-     * @param incomingUri Uri or File of the received payload
+     * @param filePayload Received Payload.File from Nearby Connections
      * @param targetFileName Name of destination file (e.g. photoId.jpg)
      * @return Absolute file path of the copied photo
      */
+    public static String copyReceivedPayloadFile(Context context, com.google.android.gms.nearby.connection.Payload.File filePayload, String targetFileName) throws IOException {
+        return copyReceivedPayloadFile(context, filePayload, targetFileName, null);
+    }
+
+    public static String copyReceivedPayloadFile(Context context, com.google.android.gms.nearby.connection.Payload.File filePayload, String targetFileName, String sessionName) throws IOException {
+        if (filePayload == null) {
+            throw new IOException("Cannot copy null Payload.File");
+        }
+
+        File targetDir = PenguinApplication.getInstance().getSharedPhotosDirectory(sessionName);
+        if (!targetDir.exists()) {
+            targetDir.mkdirs();
+        }
+
+        File destinationFile = new File(targetDir, targetFileName);
+
+        InputStream in = null;
+        if (filePayload.asUri() != null) {
+            try {
+                in = context.getContentResolver().openInputStream(filePayload.asUri());
+            } catch (Exception ignored) {
+            }
+        }
+        if (in == null && filePayload.asJavaFile() != null && filePayload.asJavaFile().exists()) {
+            in = new FileInputStream(filePayload.asJavaFile());
+        }
+        if (in == null && filePayload.asParcelFileDescriptor() != null) {
+            in = new FileInputStream(filePayload.asParcelFileDescriptor().getFileDescriptor());
+        }
+
+        if (in == null) {
+            throw new IOException("Failed to obtain input stream from Payload.File");
+        }
+
+        try (InputStream input = in;
+             OutputStream out = new FileOutputStream(destinationFile)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            out.flush();
+        }
+
+        // Notify Android MediaStore so the photo appears in Gallery / Google Photos
+        scanMediaFile(context, destinationFile);
+
+        return destinationFile.getAbsolutePath();
+    }
+
+    /**
+     * Copies a payload file given a Uri fallback.
+     */
     public static String copyReceivedPayloadFile(Context context, Uri incomingUri, String targetFileName) throws IOException {
-        File targetDir = PenguinApplication.getInstance().getSharedPhotosDirectory();
+        return copyReceivedPayloadFile(context, incomingUri, targetFileName, null);
+    }
+
+    public static String copyReceivedPayloadFile(Context context, Uri incomingUri, String targetFileName, String sessionName) throws IOException {
+        File targetDir = PenguinApplication.getInstance().getSharedPhotosDirectory(sessionName);
         if (!targetDir.exists()) {
             targetDir.mkdirs();
         }
@@ -54,14 +112,21 @@ public final class FileUtils {
             out.flush();
         }
 
+        // Notify Android MediaStore so the photo appears in Gallery / Google Photos
+        scanMediaFile(context, destinationFile);
+
         return destinationFile.getAbsolutePath();
     }
 
     /**
      * Copies a raw File to the shared photos directory.
      */
-    public static String copyFileToSharedDir(File sourceFile, String targetFileName) throws IOException {
-        File targetDir = PenguinApplication.getInstance().getSharedPhotosDirectory();
+    public static String copyFileToSharedDir(Context context, File sourceFile, String targetFileName) throws IOException {
+        return copyFileToSharedDir(context, sourceFile, targetFileName, null);
+    }
+
+    public static String copyFileToSharedDir(Context context, File sourceFile, String targetFileName, String sessionName) throws IOException {
+        File targetDir = PenguinApplication.getInstance().getSharedPhotosDirectory(sessionName);
         if (!targetDir.exists()) {
             targetDir.mkdirs();
         }
@@ -78,7 +143,24 @@ public final class FileUtils {
             out.flush();
         }
 
+        // Notify Android MediaStore so the photo appears in Gallery / Google Photos
+        scanMediaFile(context, destinationFile);
+
         return destinationFile.getAbsolutePath();
+    }
+
+    private static void scanMediaFile(Context context, File file) {
+        if (context != null && file != null && file.exists()) {
+            try {
+                android.media.MediaScannerConnection.scanFile(
+                        context.getApplicationContext(),
+                        new String[]{file.getAbsolutePath()},
+                        new String[]{"image/jpeg"},
+                        null
+                );
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     /**

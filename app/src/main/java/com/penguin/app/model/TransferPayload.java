@@ -16,12 +16,15 @@ public class TransferPayload implements Serializable {
     public static final String TYPE_SESSION_END = "SESSION_END";
     public static final String TYPE_MEMBER_LEAVE = "MEMBER_LEAVE";
     public static final String TYPE_MEMBER_JOIN = "MEMBER_JOIN";
+    public static final String TYPE_MEMBER_ROSTER = "MEMBER_ROSTER";
 
     private String type;
     private String photoId;
     private String sessionId;
+    private String sessionName;
     private String ownerDeviceId;
     private String ownerName;
+    private String extraData; // Used for serialized roster json or other metadata
     private long capturedAt;
     private long fileSize;
     private long nearbyPayloadId; // Links metadata to Nearby Connections File Payload ID
@@ -30,10 +33,15 @@ public class TransferPayload implements Serializable {
     }
 
     public static TransferPayload forPhotoMetadata(SharedPhoto photo, long nearbyPayloadId) {
+        return forPhotoMetadata(photo, nearbyPayloadId, null);
+    }
+
+    public static TransferPayload forPhotoMetadata(SharedPhoto photo, long nearbyPayloadId, String sessionName) {
         TransferPayload payload = new TransferPayload();
         payload.type = TYPE_PHOTO_METADATA;
         payload.photoId = photo.getPhotoId();
         payload.sessionId = photo.getSessionId();
+        payload.sessionName = sessionName;
         payload.ownerDeviceId = photo.getOwnerDeviceId();
         payload.ownerName = photo.getOwnerName();
         payload.capturedAt = photo.getCapturedAt();
@@ -51,14 +59,25 @@ public class TransferPayload implements Serializable {
         return payload;
     }
 
+    public static TransferPayload forMemberRoster(String sessionId, String sessionName, String rosterJson) {
+        TransferPayload payload = new TransferPayload();
+        payload.type = TYPE_MEMBER_ROSTER;
+        payload.sessionId = sessionId;
+        payload.sessionName = sessionName;
+        payload.extraData = rosterJson;
+        return payload;
+    }
+
     public String toJson() {
         try {
             JSONObject obj = new JSONObject();
             obj.put("type", type);
             obj.put("photoId", photoId);
             obj.put("sessionId", sessionId);
+            obj.put("sessionName", sessionName);
             obj.put("ownerDeviceId", ownerDeviceId);
             obj.put("ownerName", ownerName);
+            obj.put("extraData", extraData);
             obj.put("capturedAt", capturedAt);
             obj.put("fileSize", fileSize);
             obj.put("nearbyPayloadId", nearbyPayloadId);
@@ -75,8 +94,10 @@ public class TransferPayload implements Serializable {
             payload.type = obj.optString("type", "");
             payload.photoId = obj.optString("photoId", "");
             payload.sessionId = obj.optString("sessionId", "");
+            payload.sessionName = obj.optString("sessionName", "");
             payload.ownerDeviceId = obj.optString("ownerDeviceId", "");
             payload.ownerName = obj.optString("ownerName", "");
+            payload.extraData = obj.optString("extraData", "");
             payload.capturedAt = obj.optLong("capturedAt", 0);
             payload.fileSize = obj.optLong("fileSize", 0);
             payload.nearbyPayloadId = obj.optLong("nearbyPayloadId", 0);
@@ -148,5 +169,21 @@ public class TransferPayload implements Serializable {
 
     public void setNearbyPayloadId(long nearbyPayloadId) {
         this.nearbyPayloadId = nearbyPayloadId;
+    }
+
+    public String getSessionName() {
+        return sessionName;
+    }
+
+    public void setSessionName(String sessionName) {
+        this.sessionName = sessionName;
+    }
+
+    public String getExtraData() {
+        return extraData;
+    }
+
+    public void setExtraData(String extraData) {
+        this.extraData = extraData;
     }
 }

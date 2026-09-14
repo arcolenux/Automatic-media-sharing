@@ -71,6 +71,7 @@ public class TransferManager implements NearbyConnectionsManager.NearbyEventList
             nearbyManager.stopAllEndpoints();
             activeSession = null;
         }
+        com.penguin.app.service.MediaDetectionService.stop(context);
     }
 
     public void leaveCurrentSession() {
@@ -79,6 +80,7 @@ public class TransferManager implements NearbyConnectionsManager.NearbyEventList
             nearbyManager.stopAllEndpoints();
             activeSession = null;
         }
+        com.penguin.app.service.MediaDetectionService.stop(context);
     }
 
     public void retryPhoto(String photoId) {
@@ -116,6 +118,7 @@ public class TransferManager implements NearbyConnectionsManager.NearbyEventList
     public void onSessionEndedByHost() {
         Log.d(TAG, "Host ended the session");
         activeSession = null;
+        com.penguin.app.service.MediaDetectionService.stop(context);
     }
 
     @Override

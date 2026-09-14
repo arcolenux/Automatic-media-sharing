@@ -85,11 +85,23 @@
 
                 </LinearLayout>
 
+                <!-- Edit Profile Name Button -->
+                <ImageView
+                    android:id="@+id/btnEditMyName"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/edit_name"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_person"
+                    app:tint="@color/text_primary" />
+
                 <!-- Show QR / Info Button -->
                 <ImageView
                     android:id="@+id/btnSessionQR"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
+                    android:layout_marginStart="4dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/room_code_label"
                     android:padding="6dp"
@@ -172,8 +184,9 @@
                             android:id="@+id/switchAutoShare"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            app:thumbTint="@color/text_primary"
-                            app:trackTint="@color/primary_accent" />
+                            app:thumbTint="@color/switch_thumb_selector"
+                            app:trackTint="@color/switch_track_selector"
+                            app:trackDecorationTint="@color/transparent" />
 
                     </LinearLayout>
 

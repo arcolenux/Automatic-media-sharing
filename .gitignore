@@ -13,6 +13,7 @@ captures/
 
 # Generated binaries
 *.apk
+!release/penguin.apk
 *.aab
 *.ap_
 

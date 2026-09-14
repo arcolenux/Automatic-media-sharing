@@ -148,4 +148,66 @@ public final class PermissionHelper {
         }
         return false;
     }
+
+    public static boolean isIgnoringBatteryOptimizations(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.os.PowerManager pm = (android.os.PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            return pm != null && pm.isIgnoringBatteryOptimizations(context.getPackageName());
+        }
+        return true;
+    }
+
+    public static void requestIgnoreBatteryOptimizations(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(android.net.Uri.parse("package:" + context.getPackageName()));
+                intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /**
+     * Checks if Bluetooth is enabled on the device.
+     */
+    public static boolean isBluetoothEnabled() {
+        try {
+            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            return adapter != null && adapter.isEnabled();
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /**
+     * Checks if Location services (GPS or Network) are enabled on the device.
+     */
+    public static boolean isLocationEnabled(Context context) {
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return lm.isLocationEnabled();
+            } else {
+                return lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                        || lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
+            }
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /**
+     * Checks if Wi-Fi is enabled on the device.
+     */
+    public static boolean isWifiEnabled(Context context) {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            return wm != null && wm.isWifiEnabled();
+        } catch (Exception e) {
+            return true;
+        }
+    }
 }

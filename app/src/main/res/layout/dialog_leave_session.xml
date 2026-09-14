@@ -7,7 +7,7 @@
     android:padding="24dp">
 
     <TextView
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/dialog_leave_session_title"
         android:textColor="@color/text_primary"
@@ -18,34 +18,38 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:lineSpacingExtra="3dp"
+        android:lineSpacingExtra="4dp"
         android:text="@string/dialog_leave_session_msg"
         android:textColor="@color/text_secondary"
-        android:textSize="14sp" />
+        android:textSize="15sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:gravity="end"
+        android:layout_marginTop="28dp"
+        android:gravity="end|center_vertical"
         android:orientation="horizontal">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStay"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="72dp"
             android:text="@string/stay"
-            android:textColor="@color/text_secondary" />
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnConfirmLeave"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:minWidth="72dp"
             android:text="@string/leave"
             android:textColor="@color/primary_accent"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
     </LinearLayout>

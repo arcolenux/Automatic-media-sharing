@@ -78,6 +78,42 @@ public class PenguinApplication extends Application {
                 .apply();
     }
 
+    private static final String PREF_PEER_NICKNAME_PREFIX = "peer_nickname_";
+
+    public String getPeerCustomNickname(String deviceId) {
+        if (deviceId == null) return null;
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_PEER_NICKNAME_PREFIX + deviceId, null);
+    }
+
+    public void setPeerCustomNickname(String deviceId, String customName) {
+        if (deviceId == null) return;
+        SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+        if (customName == null || customName.trim().isEmpty()) {
+            editor.remove(PREF_PEER_NICKNAME_PREFIX + deviceId);
+        } else {
+            editor.putString(PREF_PEER_NICKNAME_PREFIX + deviceId, customName.trim());
+        }
+        editor.apply();
+    }
+
+    public String getEffectiveMemberName(String deviceId, String defaultDisplayName) {
+        if (deviceId != null && deviceId.equals(this.deviceId)) {
+            return this.userName != null && !this.userName.isEmpty() ? this.userName : "You";
+        }
+        String custom = getPeerCustomNickname(deviceId);
+        if (custom != null && !custom.trim().isEmpty()) {
+            return custom.trim();
+        }
+        if (defaultDisplayName != null && !defaultDisplayName.trim().isEmpty()) {
+            return defaultDisplayName.trim();
+        }
+        if (deviceId != null) {
+            return "Peer " + deviceId.substring(Math.max(0, deviceId.length() - 4));
+        }
+        return "Nearby Peer";
+    }
+
     private void createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -113,11 +149,38 @@ public class PenguinApplication extends Application {
         }
     }
 
-    public File getSharedPhotosDirectory() {
-        File base = getExternalFilesDir(null);
-        if (base == null) {
-            base = getFilesDir();
+    public File getSharedPhotosDirectory(String sessionName) {
+        File picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+        File baseDir = new File(picturesDir, "PENGUIN");
+        if (!baseDir.exists()) {
+            boolean created = baseDir.mkdirs();
+            if (!created) {
+                File fallback = getExternalFilesDir(null);
+                if (fallback == null) {
+                    fallback = getFilesDir();
+                }
+                baseDir = new File(fallback, "shared_photos");
+                if (!baseDir.exists()) {
+                    baseDir.mkdirs();
+                }
+            }
         }
-        return new File(base, "shared_photos");
+
+        if (sessionName != null && !sessionName.trim().isEmpty()) {
+            String safeSessionName = sessionName.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+            File sessionDir = new File(baseDir, safeSessionName);
+            if (!sessionDir.exists()) {
+                sessionDir.mkdirs();
+            }
+            if (sessionDir.exists()) {
+                return sessionDir;
+            }
+        }
+
+        return baseDir;
+    }
+
+    public File getSharedPhotosDirectory() {
+        return getSharedPhotosDirectory(null);
     }
 }
