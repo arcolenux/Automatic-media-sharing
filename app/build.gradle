@@ -46,6 +46,20 @@ android {
         variant.outputs.all {
             outputFileName = "penguin.apk"
         }
+        if (variant.name == "debug") {
+            variant.assembleProvider.configure {
+                doLast {
+                    def releaseDir = file("${rootDir}/release")
+                    if (!releaseDir.exists()) {
+                        releaseDir.mkdirs()
+                    }
+                    copy {
+                        from "${buildDir}/outputs/apk/debug/penguin.apk"
+                        into releaseDir
+                    }
+                }
+            }
+        }
     }
 }
 
